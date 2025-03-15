@@ -21,7 +21,7 @@ if torch.cuda.is_available():
 
 
 all_letters = string.ascii_letters + " .,;'-"
-n_letters = len(all_letters) + 1  # Plus EOS marker
+n_letters = len(all_letters) + 2  # Plus SOS, EOS marker
 
 
 def find_files(path): return glob.glob(path)
@@ -103,16 +103,17 @@ def category_tensor(category):
 
 # One-hot matrix of first to last letters (not including EOS) for input
 def input_tensor(line):
-    tensor = torch.zeros(len(line), 1, n_letters, device=device)
+    tensor = torch.zeros(len(line) + 1, 1, n_letters, device=device)
     for li in range(len(line)):
         letter = line[li]
-        tensor[li][0][all_letters.find(letter)] = 1
+        tensor[li + 1][0][all_letters.find(letter)] = 1
+    tensor[0][0][n_letters - 2] = 1
     return tensor
 
 
 # ``LongTensor`` of second letter to end (EOS) for target
 def target_tensor(line):
-    letter_indexes = [all_letters.find(line[li]) for li in range(1, len(line))]
+    letter_indexes = [all_letters.find(line[li]) for li in range(len(line))]
     letter_indexes.append(n_letters - 1)  # EOS
     return torch.tensor(letter_indexes, dtype=torch.long, device=device)
 
@@ -130,7 +131,7 @@ criterion = nn.NLLLoss().to(device)
 
 learning_rate = 0.0005
 
-rnn = RNN(n_letters, 128, n_letters).to(device)
+rnn = RNN(n_letters, 1024, n_letters).to(device)
 
 
 def train(category_tensor, input_line_tensor, target_line_tensor):
@@ -181,21 +182,22 @@ for iter in range(1, n_iters + 1):
         all_losses.append(total_loss / plot_every)
         total_loss = 0
 
-
 plt.figure()
 plt.plot(all_losses)
 plt.show()
 
 max_length = 20
 
+
 # Sample from a category and starting letter
-def sample(category, start_letter='A'):
+def sample(category):
     with torch.no_grad():  # no need to track history in sampling
         category_tensor_ = category_tensor(category)
-        input = input_tensor(start_letter)
+        input = torch.zeros(1, 1, n_letters, device=device)
+        input[0][0][n_letters - 2] = 1
         hidden = rnn.init_hidden()
 
-        output_name = start_letter
+        output_name = ''
 
         for i in range(max_length):
             output, hidden = rnn(category_tensor_, input[0], hidden)
@@ -210,10 +212,12 @@ def sample(category, start_letter='A'):
 
         return output_name
 
+
 # Get multiple samples from one category and multiple starting letters
 def samples(category, start_letters='ABC'):
     for start_letter in start_letters:
-        print(sample(category, start_letter))
+        print(sample(category))
+
 
 samples('Russian', 'RUS')
 
@@ -223,3 +227,4 @@ samples('Spanish', 'SPA')
 
 samples('Chinese', 'CHI')
 
+samples('English', 'CHI')
